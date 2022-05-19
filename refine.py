@@ -8,16 +8,17 @@ import cv2
 import os
 
 
-def graph_cut(image,mask):
+def graph_cut(image, mask):
     # Use a breakpoint in the code line below to debug your script.
+    print(image.shape,mask.shape)
 
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.dilate(mask, kernel, iterations=1)
-    if np.max(mask)==0 :
+    if np.max(mask) == 0:
         return mask
     # apply a bitwise mask to show what the rough, approximate mask would
     # give us
-    roughOutput = cv2.bitwise_and(image, image, mask=mask)
+    # roughOutput = cv2.bitwise_and(image, image, mask=mask)
     # # show the rough, approximated output
     mask[mask > 0] = cv2.GC_PR_FGD
     mask[mask == 0] = cv2.GC_BGD
@@ -30,7 +31,7 @@ def graph_cut(image,mask):
     (mask, bgModel, fgModel) = cv2.grabCut(image, mask, None, bgModel,
                                            fgModel, iterCount=5, mode=cv2.GC_INIT_WITH_MASK)
     end = time.time()
-    print("[INFO] applying GrabCut took {:.2f} seconds".format(end - start))
+    # print("[INFO] applying GrabCut took {:.2f} seconds".format(end - start))
 
     outputMask = np.where((mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD),
                           0, 1)
@@ -44,22 +45,28 @@ def graph_cut(image,mask):
     # cv2.imshow("GrabCut Output", output)
     # cv2.imshow("Rough Output", roughOutput)
     # cv2.waitKey(1)
+
+
 def graphy_cut_onall():
-    path_to_img_dirs= 'output'
-    path_to_mask_dirs= 'labeled\output'
+    path_to_img_dirs = 'output'
+    path_to_mask_dirs = '../RAFT-NCUP-master/output'
     if not os.path.exists(path_to_img_dirs) or not os.path.exists(path_to_mask_dirs):
-        raise FileNotFoundError('no dirs')
-    refined_mask_output_dirs ='./mask_Refine_output/'
+        if not os.path.exists(path_to_img_dirs):
+            raise FileNotFoundError('no path_to_img_dirs')
+        if not os.path.exists(path_to_mask_dirs):
+            raise FileNotFoundError('no path_to_mask_dirs')
+
+    refined_mask_output_dirs = './mask_Refine_output/'
     if not os.path.exists(refined_mask_output_dirs):
-            os.mkdir(refined_mask_output_dirs)
+        os.mkdir(refined_mask_output_dirs)
     img_dirs = sort_humanly(os.listdir(path_to_img_dirs))
     mask_dirs = sort_humanly(os.listdir(path_to_mask_dirs))
     for img_dir, mask_dir in zip(img_dirs, mask_dirs):
-
         imgs = sort_humanly(glob.glob(f'{path_to_img_dirs}/{img_dir}/*.jpg'))
-        masks = sort_humanly(glob.glob(f'{path_to_mask_dirs}\{mask_dir}/*.jpg'))
+        masks = sort_humanly(glob.glob(f'{path_to_mask_dirs}/{mask_dir}/*.jpg'))
+        print(img_dir, mask_dir)
 
-        # codec = cv2.VideoWriter_fourcc(*'mp4v')
+        # assert len(imgs)==len(masks)
         frameSize_s = cv2.imread(imgs[0]).shape[:2]
         rotation_flag = False
 
@@ -72,9 +79,13 @@ def graphy_cut_onall():
         #     continue
         name = os.path.split(img_dir)[-1]
         out_path = os.path.join(refined_mask_output_dirs, name)
-        # print(img_dir, mask_dir)
+        print(img_dir, mask_dir)
         if not os.path.exists(out_path):
             os.mkdir(out_path)
+        else:
+            if len(os.listdir(out_path))==100:
+                print(f'files are already in {out_path}')
+                continue
         for i, m in zip(imgs, masks):
             img = cv2.imread(i)
             mask = cv2.imread(m, 0)
@@ -82,10 +93,12 @@ def graphy_cut_onall():
             if rotation_flag:
                 mask = np.rot90(mask, k=-1)
 
+            if img.shape[:2]!=mask.shape[:2]:
+                mask = cv2.resize(mask,img.shape[:2][::-1])
             refined_mask = graph_cut(img, mask)
-            save_name=os.path.join(out_path, os.path.split(m)[-1] )
-
+            save_name = os.path.join(out_path, 'refined_' + os.path.split(m)[-1])
             cv2.imwrite(save_name, refined_mask)
+
 
 if __name__ == '__main__':
     graphy_cut_onall()

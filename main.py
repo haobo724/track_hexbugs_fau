@@ -52,14 +52,14 @@ def get_bb(img, mask):
 
 def merge_mask_input_as_video():
     path_to_img_dirs= 'output'
-    path_to_mask_dirs= 'labeled\output'
+    path_to_mask_dirs= '..\RAFT-NCUP-master\output'
     if not os.path.exists(path_to_img_dirs) or not os.path.exists(path_to_mask_dirs):
         raise FileNotFoundError('no dirs')
 
     img_dirs = sort_humanly(os.listdir(path_to_img_dirs))
     mask_dirs = sort_humanly(os.listdir(path_to_mask_dirs))
-    for img_dir, mask_dir in zip(img_dirs, mask_dirs):
-
+    for img_dir, mask_dir in zip(img_dirs[52:53], mask_dirs[52:53]):
+        print(img_dir,mask_dir)
         imgs = sort_humanly(glob.glob(f'{path_to_img_dirs}/{img_dir}/*.jpg'))
         masks = sort_humanly(glob.glob(f'{path_to_mask_dirs}\{mask_dir}/*.jpg'))
 
@@ -74,7 +74,7 @@ def merge_mask_input_as_video():
         # else:
         #     print(img_dir, mask_dir, 'skiped')
         #     continue
-        name = os.path.split(img_dir)[-1] + '.mp4'
+        name = os.path.split(img_dir)[-1] + '_new.mp4'
         # input()
         out_path = os.path.join('./video_output/', name)
         print(img_dir, mask_dir)
@@ -84,8 +84,8 @@ def merge_mask_input_as_video():
             img = cv2.imread(i)
             mask = cv2.imread(m, 0)
 
-            if rotation_flag:
-                mask = np.rot90(mask, k=-1)
+            # if rotation_flag:
+                # mask = np.rot90(mask, k=-1)
 
             concat = get_bb(img, mask)
             out.write(concat)
