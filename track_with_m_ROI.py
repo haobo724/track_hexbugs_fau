@@ -38,6 +38,7 @@ cv2.imshow("Frame", frame)
 
 initBB = cv2.selectROI("Frame", frame, fromCenter=False,
 							   showCrosshair=True)
+print(initBB)
 tracker.init(frame, initBB)
 
 while True:
