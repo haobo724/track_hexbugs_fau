@@ -5,22 +5,19 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.special import expit
-from dummytest import KalmanFilter
+# from dummytest import KalmanFilter
 from tools import delet_contours
 
-kf0 = KalmanFilter()
-kf1 = KalmanFilter()
-kf2 = KalmanFilter()
-kf3 = KalmanFilter()
+# kf0 = KalmanFilter()
+# kf1 = KalmanFilter()
+# kf2 = KalmanFilter()
+# kf3 = KalmanFilter()
 
 class Tracing_iou():
     def __init__(self, result,video):
         self.bug_nums = 0
-        self.bug_idex = []
         self.track_pool = []
         self.id_pool = {}
-        self.track_pool_per = []
-        self.center_point = {}
         self.result_series = result
         self.result_series_mask = self.result_series[:, 0, ...]
         self.result_series_head = self.result_series[:, 1, ...]
@@ -76,38 +73,16 @@ class Tracing_iou():
         self.bug_nums = res[most]
         print('[INFO] bug_nums should be :', self.bug_nums)
 
-    def clean_result(self):
-        kernel = np.ones((3, 3), np.uint8)
-
-        for frame_nr, img in enumerate(self.result_series_mask):
-            ret, thresh = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # 大津阈值
-            # thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-            # dist_transform = cv2.distanceTransform(thresh, cv2.DIST_L2, 5)
-            # ret, thresh = cv2.threshold(dist_transform, 0.6 * dist_transform.max(), 255, cv2.THRESH_BINARY)
-            # thresh = np.array(thresh,dtype=np.uint8)
-            # thresh = cv2.erode(thresh, kernel)
-
-            num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(thresh)
-            pixel_area = np.array(stats)[:, -1]
-
-            if len(pixel_area) >= self.bug_nums + 1:
-                bug_idx = np.argsort(-pixel_area)[1:self.bug_nums + 1]
-            else:
-                miss_nr = self.bug_nums + 1 - len(pixel_area)
-                bug_idx = [0]
-                print(f'[INFO] At {frame_nr} frame {miss_nr} bug(s) miss')
-                # plt.imshow(thresh)
-                # plt.show()
-
-            blank = np.zeros_like(img)
-            for idx in bug_idx:
-                blank[labels == idx] = idx
-            self.result_series_mask[idx, ...] = blank
-            # plt.imshow(img)
-            # plt.show()
-        print('[INFO] Result mask has cleaned')
 
     def clean_result_cnts(self):
+        '''
+        分割结果的post processing，目的是去除细碎小物体
+        没用连通域，因为给的东西太冗余，并且背景还会被计算，很烦
+        用contour一样还快
+
+
+        :return:
+        '''
         for frame_nr, img in enumerate(self.result_series_mask):
 
             contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL,
@@ -135,6 +110,10 @@ class Tracing_iou():
             self.multi_bugs_track()
 
     def single_bug_track(self):
+        '''
+        废弃
+        :return:
+        '''
         kernel = np.ones((3, 3), np.uint8)
 
         for mask, head in zip(self.result_series_mask, self.result_series_head):
@@ -167,6 +146,15 @@ class Tracing_iou():
             # plt.show()
 
     def multi_bugs_track(self):
+        '''
+        根据分割结果的质心追踪，knn
+        bug数取决于整个视频流分割结果，取的众数
+        如果某个bug丢了那么追踪框保持上次状态，继续丢继续保持，
+        计划如果中途丢了就用kf补上，但是这块没完全写完
+        id建立取决于第一帧分割结果，存在隐患待完善
+        无法应对中途加bug这种操作(大概)
+        :return:
+        '''
         for mask ,frame in zip(self.result_series_mask,self.real_video):
 
             contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL,
@@ -180,13 +168,24 @@ class Tracing_iou():
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (red, 255, 255), 2)
                 mc = (box[0] + box[2] // 2, box[1] + box[3] // 2)  # x,y
                 self.track_pool.append(mc)
+            if not len(self.track_pool) :
+                '''
+                全丢了就下张图再见
+                '''
+                print('[INFO] Bugs all missed')
+                continue
+
             if not self.id_pool:
+                '''
+                初始化bug池
+                '''
                 i = 0
                 for pt in self.track_pool:
                     self.id_pool.setdefault(str(i), pt)
                     i += 1
                 self.track_pool = []
                 continue
+
             distance_matrix = []
             for id, value in self.id_pool.items():
                 d = []
@@ -196,24 +195,24 @@ class Tracing_iou():
 
                 distance_matrix.append(d)
             distance_matrix = np.array(distance_matrix)
-            if not len(distance_matrix) :
-                print('[INFO] Bugs all missed')
-                continue
+
             prevFrame_pt_id = np.argmin(distance_matrix,axis=0) # axis --------------------1 横一竖0
             curFrame_pt_id = np.argmin(distance_matrix,axis=1) # axis --------------------1 横一竖0
             if len(curFrame_pt_id)!=len(prevFrame_pt_id):
+                '''
+                如果丢了bug，需要判断下丢了哪个
+                '''
                 curFrame_pt_id=curFrame_pt_id[prevFrame_pt_id]
-            # if distance_matrix.shape[1]<self.bug_nums:
-            #     curFrame_pt_id = np.argmin(distance_matrix, axis=0)
+
                 for id1,id2 in zip(prevFrame_pt_id,curFrame_pt_id):
                     self.id_pool[str(id1)] = self.track_pool[id2]
             else:
                 for id1,id2 in zip(range(self.bug_nums),curFrame_pt_id):
                     self.id_pool[str(id1)] = self.track_pool[id2]
-            _ = kf0.predict(self.id_pool['0'])
+            # _ = kf0.predict(self.id_pool['0'])
 
             print(distance_matrix)
-            un_updated_idx = (set(prevFrame_pt_id.tolist())^set(list(range(self.bug_nums))))
+            # un_updated_idx = (set(prevFrame_pt_id.tolist())^set(list(range(self.bug_nums))))
 
             # if len(un_updated_idx):
             #     for i in un_updated_idx:
@@ -242,9 +241,8 @@ if __name__ == '__main__':
         video.append(frame)
     video = np.array(video)
     path = 'tracing_mask/'
-    files = glob.glob(path + '*.npy')
+    # files = glob.glob(path + '*.npy')
     s = np.load(r'F:\opencv\tracing\tracing_mask\training036.npy')
-    print(s.shape)
     t = Tracing_iou(s,video)
     t.get_bug_nums()
     t.clean_result_cnts()
