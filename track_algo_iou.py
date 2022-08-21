@@ -1,6 +1,6 @@
 import glob
 import math
-
+from scipy.optimize import linear_sum_assignment
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
@@ -26,7 +26,7 @@ class Tracing_iou():
         self.real_video = video
 
     def norm_series(self, img):
-        img = expit(img) > 0.9
+        img = expit(img) > 0.8
         img = img * 255
         # img = (img - np.min(img)) / (np.max(img) - np.min(img)) * 255
         img = np.array(img, dtype=np.uint8)
@@ -196,22 +196,26 @@ class Tracing_iou():
                 distance_matrix.append(d)
             distance_matrix = np.array(distance_matrix)
 
-            prevFrame_pt_id = np.argmin(distance_matrix,axis=0) # axis --------------------1 横一竖0
-            curFrame_pt_id = np.argmin(distance_matrix,axis=1) # axis --------------------1 横一竖0
-            if len(curFrame_pt_id)!=len(prevFrame_pt_id):
-                '''
-                如果丢了bug，需要判断下丢了哪个
-                '''
-                curFrame_pt_id=curFrame_pt_id[prevFrame_pt_id]
+            indices,indices2 = linear_sum_assignment(distance_matrix)
+            for id1, id2 in zip(indices, indices2):
+                self.id_pool[str(id1)] = self.track_pool[id2]
 
-                for id1,id2 in zip(prevFrame_pt_id,curFrame_pt_id):
-                    self.id_pool[str(id1)] = self.track_pool[id2]
-            else:
-                for id1,id2 in zip(range(self.bug_nums),curFrame_pt_id):
-                    self.id_pool[str(id1)] = self.track_pool[id2]
+            # prevFrame_pt_id = np.argmin(distance_matrix,axis=0) # axis --------------------1 横一竖0
+            # curFrame_pt_id = np.argmin(distance_matrix,axis=1) # axis --------------------1 横一竖0
+            # if len(curFrame_pt_id)!=len(prevFrame_pt_id):
+            #     '''
+            #     如果丢了bug，需要判断下丢了哪个
+            #     '''
+            #     curFrame_pt_id=curFrame_pt_id[prevFrame_pt_id]
+            #
+            #     for id1,id2 in zip(prevFrame_pt_id,curFrame_pt_id):
+            #         self.id_pool[str(id1)] = self.track_pool[id2]
+            # else:
+            #     for id1,id2 in zip(range(self.bug_nums),curFrame_pt_id):
+            #         self.id_pool[str(id1)] = self.track_pool[id2]
+
+
             # _ = kf0.predict(self.id_pool['0'])
-
-            print(distance_matrix)
             # un_updated_idx = (set(prevFrame_pt_id.tolist())^set(list(range(self.bug_nums))))
 
             # if len(un_updated_idx):
@@ -231,7 +235,7 @@ class Tracing_iou():
 
 
 if __name__ == '__main__':
-    video_path = cv2.VideoCapture(r'Training_videos\training036.mp4')
+    video_path = cv2.VideoCapture(r'Training_videos\training016.mp4')
     video=[]
     while True:
         ret,frame = video_path.read()
@@ -242,9 +246,10 @@ if __name__ == '__main__':
     video = np.array(video)
     path = 'tracing_mask/'
     # files = glob.glob(path + '*.npy')
-    s = np.load(r'F:\opencv\tracing\tracing_mask\training036.npy')
+    s = np.load(r'F:\opencv\tracing\tracing_mask\training016.npy')
     t = Tracing_iou(s,video)
+    # t.show_mask(code=1)
+
     t.get_bug_nums()
     t.clean_result_cnts()
-    # t.show_mask(code=1)
     t.track()
